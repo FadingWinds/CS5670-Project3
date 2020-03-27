@@ -72,13 +72,12 @@ def computeSphericalWarpMappings(dstShape, f, k1, k2):
     # (img_height, img_width)
     # TODO-BLOCK-BEGIN
     # Euclidean
-    xt = np.sin(xf)*np.cos(xf)
-    yt = np.sin(xf)
-    zt = np.cos(xf)*np.sin(xf)
+    xt = np.sin(xf)*np.cos(yf)
+    yt = np.sin(yf)
+    zt = np.cos(xf)*np.cos(yf)
     # Project
     xt = xt/zt
     yt = yt/zt
-    zt = 1
     # Distort
     square_r = xt ** 2 + yt ** 2
     xt = xt * (1 + k1*square_r + k2*(square_r**2))
