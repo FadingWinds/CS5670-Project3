@@ -139,7 +139,7 @@ def alignPair(f1, f2, matches, m, nRANSAC, RANSACthresh):
         if len(num_inliers) > max_inlier:
             max_est = num_inliers
             max_inlier = len(num_inliers)
-    M = leastSquaresFit(f1, f2, matches, m, best_estimate)
+    M = leastSquaresFit(f1, f2, matches, m, max_est)
     # TODO 4 implemented
     #TODO-BLOCK-END
     #END TODO
