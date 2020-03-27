@@ -1,0 +1,6 @@
+iPhone 8 Back Camera
+
+Focal length: 4mm
+Sensor width: 1/3 inch (4.8mm)
+Image width: 1536px
+Estimate focal length in pixels: 1280
