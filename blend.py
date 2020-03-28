@@ -72,6 +72,7 @@ def accumulateBlend(img, acc, M, blendWidth):
         px_max = img[:, :, c].max()
         img[:, :, c] = ((img[:, :, c] - px_min).astype(float) * 255 / (px_max - px_min)).astype(int)
 
+    # Calculate weights
     w = np.ones((height0, width0))
     for i in range(blendWidth):
         w[:, i] = [float(i) / blendWidth] * height0
@@ -82,11 +83,10 @@ def accumulateBlend(img, acc, M, blendWidth):
         f[:, :, c] = img[:, :, c] * w
     f[:, :, -1] = w
 
+    # Compute addtion
     tmp = np.zeros(acc.shape)
-
     for c in range(channel + 1):
         tmp[:, :, c] = cv2.warpPerspective(f[:, :, c], M, dsize=(width1, height1), flags=cv2.INTER_LINEAR)
-    
     acc += tmp
     #TODO-BLOCK-END
     # END TODO
