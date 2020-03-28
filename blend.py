@@ -3,6 +3,8 @@ import sys
 
 import cv2
 import numpy as np
+import copy
+from numpy.linalg import inv
 
 
 class ImageInfo:
@@ -28,25 +30,20 @@ def imageBoundingBox(img, M):
     """
     #TODO 8
     #TODO-BLOCK-BEGIN
-    corner1 = np.array((0,0,1))
-    corner2 = np.array((0,img.shape[0]-1,1))
-    corner3 = np.array((img.shape[1]-1,img.shape[0]-1,1))
-    corner4 = np.array((img.shape[1]-1,0,1))
-
-    p1 = np.dot(M, corner1)
-    p2 = np.dot(M, corner2)
-    p3 = np.dot(M, corner3)
-    p4 = np.dot(M, corner4)
-    
-    p1 /= p1[2]
-    p2 /= p2[2]
-    p3 /= p3[2]
-    p4 /= p4[2]
-    
-    minX = min(p1[0],p2[0],p3[0],p4[0])
-    minY = min(p1[1],p2[1],p3[1],p4[1])
-    maxX = max(p1[0],p2[0],p3[0],p4[0])
-    maxY = max(p1[1],p2[1],p3[1],p4[1])
+    # Only need to consider the four corners of the original image
+    height, width = img.shape[:2]
+    c1 = np.dot(M, [0, 0, 1])
+    c2 = np.dot(M, [0, height - 1, 1])
+    c3 = np.dot(M, [width - 1, 0, 1])
+    c4 = np.dot(M, [width - 1, height - 1, 1])
+    c1 /= c1[-1]
+    c2 /= c2[-1]
+    c3 /= c3[-1]
+    c4 /= c4[-1]
+    minX = min(c1[0], c2[0], c3[0], c4[0])
+    minY = min(c1[1], c2[1], c3[1], c4[1])
+    maxX = max(c1[0], c2[0], c3[0], c4[0])
+    maxY = max(c1[1], c2[1], c3[1], c4[1])
     #TODO-BLOCK-END
     return int(minX), int(minY), int(maxX), int(maxY)
 
@@ -66,35 +63,32 @@ def accumulateBlend(img, acc, M, blendWidth):
     # BEGIN TODO 10
     # Fill in this routine
     #TODO-BLOCK-BEGIN
-    height, width, channel = img.shape
+    height0, width0, channel = img.shape
+    height1, width1 = acc.shape[:2]
 
-    #Normalization to remove brightness.
-    for chan in range(3):
-        c_max = np.max(img[:, :, chan])
+    # Normalize
+    for c in range(channel):
+        px_min = img[:, :, c].min()
+        px_max = img[:, :, c].max()
+        img[:, :, c] = ((img[:, :, c] - px_min).astype(float) * 255 / (px_max - px_min)).astype(int)
 
-        c_min = np.min(img[:, :, chan])
-        ranging = c_max - c_min
-        img[:, :, chan] = ((img[:, :, chan] - c_min).astype(float) * 255 / float(ranging)).astype(int)
+    # Calculate weights
+    w = np.ones((height0, width0))
+    for i in range(blendWidth):
+        w[:, i] = [float(i) / blendWidth] * height0
+        w[:, width0 - c - 1] = [float(i) / blendWidth] * height0
+        
+    f = np.zeros((height0, width0, channel + 1))
+    for c in range(channel):
+        f[:, :, c] = img[:, :, c] * w
+    f[:, :, -1] = w
 
-    addon = np.zeros(acc.shape)
-
-    alpha = np.ones((height ,width))
-    for c in range(blendWidth):
-        alpha[:, c] = [float(c) / blendWidth] * height
-        alpha[:, width - c - 1] = [float(c) / blendWidth] * height
-
-
-    feathering = np.zeros((height, width, channel + 1))
-    for chan in range(3):
-        feathering[:, :, chan] = img[:, :, chan] * alpha
-    feathering[:, :, -1] = alpha
-
-    for chan in range(4):
-        addon[:, :, chan] = cv2.warpPerspective(feathering[:, :, chan], M, dsize=(acc.shape[1], acc.shape[0]), flags= cv2.INTER_LINEAR)
-
-    acc += addon
-
-#TODO-BLOCK-END
+    # Compute addtion
+    tmp = np.zeros(acc.shape)
+    for c in range(channel + 1):
+        tmp[:, :, c] = cv2.warpPerspective(f[:, :, c], M, dsize=(width1, height1), flags=cv2.INTER_LINEAR)
+    acc += tmp
+    #TODO-BLOCK-END
     # END TODO
 
 
@@ -109,15 +103,14 @@ def normalizeBlend(acc):
     # BEGIN TODO 11
     # fill in this routine..
     #TODO-BLOCK-BEGIN
-    img = np.zeros((acc.shape[0], acc.shape[1], 4), dtype=np.uint8)
-    for i in range(acc.shape[0]):
-        for j in range(acc.shape[1]):
-            for k in range(3):
-                if acc[i,j,3] != 0:
-                    img[i,j,k] = int(float(acc[i,j,k]) / float(acc[i,j,3]))
-                else:
-                    img[i,j,k] = 0
-            img[i,j,3] = 1
+    height, width, channel = acc.shape[:3]
+    img = np.zeros(acc.shape, dtype=np.uint8)
+    for x in range(width):
+        for y in range(height):
+            for c in range(channel):
+                if acc[y][x][-1] != 0:
+                    img[y][x][c] = int(float(acc[y][x][c]) / acc[y][x][-1])
+                img[y][x][-1] = 1
     #TODO-BLOCK-END
     # END TODO
     return img
@@ -139,8 +132,8 @@ def getAccSize(ipv):
     """
 
     # Compute bounding box for the mosaic
-    minX = np.inf
-    minY = np.inf
+    minX = np.Inf
+    minY = np.Inf
     maxX = 0
     maxY = 0
     channels = -1
@@ -157,11 +150,11 @@ def getAccSize(ipv):
         # BEGIN TODO 9
         # add some code here to update minX, ..., maxY
         #TODO-BLOCK-BEGIN
-        minX_tmp, minY_tmp, maxX_tmp, maxY_tmp = imageBoundingBox(img, M)
-        minX = min(minX, minX_tmp)
-        minY = min(minY, minY_tmp)
-        maxX = max(maxX, maxX_tmp)
-        maxY = max(maxY, maxY_tmp)
+        tmp_minX, tmp_minY, tmp_maxX, tmp_maxY = imageBoundingBox(img, M)
+        minX = min(minX, tmp_minX)
+        minY = min(minY, tmp_minY)
+        maxX = max(maxX, tmp_maxX)
+        maxY = max(maxY, tmp_maxY)
         #TODO-BLOCK-END
         # END TODO
 
@@ -265,32 +258,5 @@ def blendImages(ipv, blendWidth, is360=False, A_out=None):
     croppedImage = cv2.warpPerspective(
         compImage, A, (outputWidth, accHeight), flags=cv2.INTER_LINEAR
     )
-
-    # #extra credit cropout the dark margins
-    # image = croppedImage
-    #
-    # imgray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    #
-    # # Set threshold
-    # # th1 = cv2.adaptiveThreshold(imgray,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY,1023,0)
-    # _, th2 = cv2.threshold(imgray, 8, 255, cv2.THRESH_BINARY)
-    # contours, hierarchy = cv2.findContours(th2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    #
-    # # Find with the largest rectangle
-    # areas = [cv2.contourArea(contour) for contour in contours]
-    # max_index = np.argmax(areas)
-    # cnt = contours[max_index]
-    # x, y, w, h = cv2.boundingRect(cnt)
-    #
-    # # Ensure bounding rect should be at least 16:9 or taller
-    # if w / h > 16 / 9:
-    #     # increase top and bottom margin
-    #     newHeight = w / 16 * 9
-    #     y = y - (newHeight - h) / 2
-    #     h = newHeight
-    #
-    # # Crop with the largest rectangle
-    # crop = image[y:y + h, x:x + w, :]
-
 
     return croppedImage
