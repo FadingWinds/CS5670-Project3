@@ -124,22 +124,24 @@ def alignPair(f1, f2, matches, m, nRANSAC, RANSACthresh):
         sample = 1
     elif m == eHomography:
         sample = 4
-    max_inlier = 0
+
+    num_inliers = -1
     max_est = []
-    for i in range(nRANSAC):
-        H = np.eye(3)
-        randMatch = np.random.choice(matches, sample)
+    for i in range(nRANSAC):        
+        randMatch = np.random.choice(matches, sample, replace=False)
         if m == eHomography:
             H = computeHomography(f1,f2,randMatch)
-        elif m == eTranslate:
+        else:
+            H = np.eye(3)
             x1, y1 = f1[randMatch[0].queryIdx].pt
             x2, y2 = f2[randMatch[0].trainIdx].pt
             H[0,2] = x2 - x1
             H[1,2] = y2 - y1
-        num_inliers = getInliers(f1, f2, matches, H, RANSACthresh)
-        if len(num_inliers) > max_inlier:
-            max_est = num_inliers
-            max_inlier = len(num_inliers)
+        inlier_indices = getInliers(f1, f2, matches, H, RANSACthresh)
+        if len(inlier_indices) > num_inliers:
+            max_est = inlier_indices
+            num_inliers = len(inlier_indices)
+    
     M = leastSquaresFit(f1, f2, matches, m, max_est)
     # TODO 4 implemented
     #TODO-BLOCK-END
@@ -178,16 +180,16 @@ def getInliers(f1, f2, matches, M, RANSACthresh):
         #TODO-BLOCK-BEGIN
         x1, y1 = f1[matches[i].queryIdx].pt
         x2, y2 = f2[matches[i].trainIdx].pt
-        p = np.zeros((3,1))
-        p[0] = x1
-        p[1] = y1
-        p[2] = 1
-        trans = np.dot(M,p)
-        xt = trans[0]/trans[2]
-        yt = trans[1]/trans[2]
-        x_dist = (x2 - xt)**2
-        y_dist = (y2 - xt)**2
-        dist = np.sqrt(x_dist+y_dist)
+
+        x = np.zeros((3,1))
+        x[0] = x1
+        x[1] = y1
+        x[2] = 1
+        y = np.dot(M,x)
+
+        x2_pred = y[0] / y[2]
+        y2_pred = y[1] / y[2]
+        dist = np.sqrt((x2-x2_pred)**2 + (y2 - y2_pred)**2)
         if dist <= RANSACthresh:
             inlier_indices.append(i)
         # TODO 5 implemented
